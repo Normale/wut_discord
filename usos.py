@@ -4,6 +4,7 @@ from typing import List, Dict
 import asyncio
 from utilities import timer
 
+
 BASE_URL = "https://apps.usos.pw.edu.pl"
 SEARCH_URL = f"{BASE_URL}/services/courses/search"
 COURSE_URL = f"{BASE_URL}/services/courses/course"
@@ -26,6 +27,16 @@ async def conducted_filter(client: httpx.AsyncClient, courses_list: List[str], c
             yield item
 
 
+async def get_units_ids(client: httpx.AsyncClient, course: Dict, term_id: str) -> None:
+    URL = f"{BASE_URL}/services/courses/course_edition"
+    json = (await client.get(URL, params={
+        "course_id": course["course_id"],
+        "term_id": term_id,
+        "fields": "course_units_ids"
+    })).json()
+    course["course_units_ids"] = json["course_units_ids"]
+
+
 async def get_courses_list(name: str, term: str = "2021L") -> List[Dict]:
     COURSES = []
     start_page = 1
@@ -35,7 +46,7 @@ async def get_courses_list(name: str, term: str = "2021L") -> List[Dict]:
             json = (await client.get(SEARCH_URL, params={"lang": "en",
                                                          "fac_id": "103000",
                                                          "fac_deep": True,
-                                                         "fields": "course_id",
+                                                         "fields": "course_id|name",
                                                          "name": name,
                                                          "start": start_page,
                                                          "num": 20
@@ -47,6 +58,8 @@ async def get_courses_list(name: str, term: str = "2021L") -> List[Dict]:
 
         conducted = [course async for course in conducted_filter(client, COURSES, term)]
     # prevent weird HTTPX+asyncio event loop error on windows.
+        updates = [get_units_ids(client, course, term) for course in conducted]
+        await asyncio.gather(*updates)
     await asyncio.sleep(0.2)
     return conducted
 
